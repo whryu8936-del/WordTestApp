@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>영어 암기 앱</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1 class="brand">English Word Test</h1>
+      <p class="tagline">영어 단어 암기 &amp; 시험</p>
+    </header>
+
+    <!-- 메인 화면 -->
+    <section id="screen-home" class="screen active">
+      <div id="home-datetime" class="home-datetime">—</div>
+      <div class="home-stats" id="home-stats">
+        <div class="home-stat">
+          <span class="home-stat-label">총단어수</span>
+          <span class="home-stat-value" id="stat-word-count">0</span>
+        </div>
+        <div class="home-stat">
+          <span class="home-stat-label">총시험횟수</span>
+          <span class="home-stat-value" id="stat-exam-count">0</span>
+        </div>
+        <div class="home-stat">
+          <span class="home-stat-label">전체정답율</span>
+          <span class="home-stat-value" id="stat-accuracy">—</span>
+        </div>
+      </div>
+      <nav class="main-nav">
+        <button type="button" class="nav-btn" data-action="start-exam">시험 시작</button>
+        <button type="button" class="nav-btn" data-action="manage-words">단어 관리</button>
+        <button type="button" class="nav-btn" data-action="view-records">시험 기록 조회</button>
+      </nav>
+    </section>
+
+    <!-- 시험 화면 -->
+    <section id="screen-exam" class="screen">
+      <div class="screen-top">
+        <button type="button" class="back-btn" data-action="go-home">← 메인</button>
+        <span id="exam-timer" class="exam-timer">00:00:00</span>
+        <span id="exam-progress" class="progress">1 / 10</span>
+      </div>
+      <div class="exam-card">
+        <p class="exam-label">영어 단어</p>
+        <p id="exam-word" class="exam-word">—</p>
+        <div id="exam-meanings" class="exam-meanings hidden"></div>
+        <div class="exam-actions">
+          <button type="button" id="btn-show-meaning" class="btn btn-secondary">뜻보기</button>
+          <div id="answer-actions" class="answer-actions hidden">
+            <button type="button" id="btn-correct" class="btn btn-correct">맞음</button>
+            <button type="button" id="btn-wrong" class="btn btn-wrong">틀렸음</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 시험 결과 화면 -->
+    <section id="screen-result" class="screen">
+      <div class="screen-top">
+        <button type="button" class="back-btn" data-action="go-home">← 메인</button>
+        <h2 class="screen-title">시험 결과</h2>
+      </div>
+      <p id="result-summary" class="result-summary"></p>
+      <div class="table-wrap">
+        <table id="result-table">
+          <thead>
+            <tr>
+              <th>번호</th>
+              <th>영어 단어</th>
+              <th>뜻</th>
+              <th>수준</th>
+              <th>결과</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn-primary" data-action="go-home">메인으로</button>
+    </section>
+
+    <!-- 단어 관리 화면 -->
+    <section id="screen-words" class="screen">
+      <div class="screen-top">
+        <button type="button" class="back-btn" data-action="go-home">← 메인</button>
+        <h2 class="screen-title">단어 관리</h2>
+      </div>
+      <button type="button" id="btn-open-add-word" class="btn btn-primary btn-add-word" data-action="open-add-word">
+        새 단어 추가
+      </button>
+      <div class="sort-bar">
+        <span class="sort-label">정렬</span>
+        <button type="button" class="btn btn-sm sort-btn active" data-action="sort-words" data-sort="registered">등록순</button>
+        <button type="button" class="btn btn-sm sort-btn" data-action="sort-words" data-sort="wrong">오답순</button>
+        <button type="button" class="btn btn-sm sort-btn" data-action="sort-words" data-sort="alpha">알파벳순</button>
+      </div>
+      <p id="word-count" class="word-count"></p>
+      <div class="table-wrap">
+        <table id="words-table">
+          <thead>
+            <tr>
+              <th>영어 단어</th>
+              <th>뜻</th>
+              <th>수준</th>
+              <th>정답률</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 시험 기록 화면 -->
+    <section id="screen-records" class="screen">
+      <div class="screen-top">
+        <button type="button" class="back-btn" data-action="go-home">← 메인</button>
+        <h2 class="screen-title">시험 기록 조회</h2>
+      </div>
+      <div class="table-wrap">
+        <table id="records-table">
+          <thead>
+            <tr>
+              <th>일시</th>
+              <th>맞은 수</th>
+              <th>틀린 수</th>
+              <th>정답률</th>
+              <th>경과시간</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="records-empty" class="empty-msg hidden">아직 시험 기록이 없습니다.</p>
+    </section>
+
+    <!-- 단어 추가/편집 모달 -->
+    <div id="add-word-modal" class="modal hidden">
+      <div class="modal-backdrop" data-action="close-add-word"></div>
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h3 id="word-modal-title">새 단어 추가</h3>
+          <button type="button" class="modal-close" data-action="close-add-word" aria-label="닫기">×</button>
+        </div>
+        <form id="word-form" class="word-form word-form-modal">
+          <div class="form-row">
+            <label for="input-word">영어 단어</label>
+            <input type="text" id="input-word" placeholder="예: apple" required autocomplete="off" />
+          </div>
+          <div class="auto-actions">
+            <button type="button" id="btn-auto-word" class="btn btn-secondary btn-sm">단어 자동 선택</button>
+            <button type="button" id="btn-auto-meaning" class="btn btn-secondary btn-sm" disabled>단어 뜻 자동 찾기</button>
+          </div>
+          <div class="form-row">
+            <label for="input-meaning1">뜻 1 (필수)</label>
+            <input type="text" id="input-meaning1" placeholder="예: 사과" required autocomplete="off" />
+          </div>
+          <div class="form-row">
+            <label for="input-meaning2">뜻 2 (선택)</label>
+            <input type="text" id="input-meaning2" placeholder="예: 애플" autocomplete="off" />
+          </div>
+          <fieldset class="level-fieldset">
+            <legend>단어 수준</legend>
+            <div class="level-options">
+              <label class="level-option">
+                <input type="radio" name="word-level" value="중학생" checked />
+                <span>중학생</span>
+              </label>
+              <label class="level-option">
+                <input type="radio" name="word-level" value="고등학생" />
+                <span>고등학생</span>
+              </label>
+              <label class="level-option">
+                <input type="radio" name="word-level" value="대학생" />
+                <span>대학생</span>
+              </label>
+              <label class="level-option">
+                <input type="radio" name="word-level" value="최상위" />
+                <span>최상위</span>
+              </label>
+            </div>
+          </fieldset>
+          <button type="submit" id="word-form-submit" class="btn btn-primary">단어 추가</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 기록 상세 모달 -->
+    <div id="record-detail-modal" class="modal hidden">
+      <div class="modal-backdrop" data-action="close-modal"></div>
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h3 id="detail-title">시험 상세</h3>
+          <button type="button" class="modal-close" data-action="close-modal" aria-label="닫기">×</button>
+        </div>
+        <div id="detail-summary" class="detail-summary"></div>
+        <div class="table-wrap">
+          <table id="detail-table">
+            <thead>
+              <tr>
+                <th>번호</th>
+                <th>영어 단어</th>
+                <th>뜻</th>
+                <th>수준</th>
+                <th>결과</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-primary btn-modal-close" data-action="close-modal">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="word-bank.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
