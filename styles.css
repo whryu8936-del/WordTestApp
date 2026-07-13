@@ -850,6 +850,54 @@ tbody tr:hover {
   color: var(--ink);
 }
 
+.exam-level-hint {
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.exam-level-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.exam-level-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  background: #f0f6f7;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  padding: 0.85rem 1rem;
+}
+
+.exam-level-btn:hover {
+  background: #e2eef0;
+  border-color: var(--accent);
+}
+
+.exam-level-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.exam-level-desc {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.exam-level-count {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  margin-top: 0.15rem;
+}
+
 .sort-label {
   color: #e8f4f5;
   font-size: 0.9rem;

@@ -283,6 +283,7 @@
     closeUserModal();
     closeAdminLoginModal();
     closeImportResultModal();
+    closeExamLevelModal();
     closeAddWordModal();
     closeModal();
     $("#login-form").reset();
@@ -738,6 +739,7 @@
   function goHome() {
     stopExamTimer();
     closeAddWordModal();
+    closeExamLevelModal();
     renderHomeStats();
     showScreen("screen-home");
   }
@@ -758,8 +760,62 @@
       );
       return;
     }
+    openExamLevelModal();
+  }
 
-    examQueue = shuffle(words).slice(0, EXAM_SIZE);
+  function getWordsForExamLevel(examLevel) {
+    if (examLevel === "middle") {
+      return words.filter((w) => (w.level || "중학생") === "중학생");
+    }
+    if (examLevel === "high") {
+      return words.filter((w) => w.level === "고등학생");
+    }
+    if (examLevel === "college") {
+      return words.filter((w) => w.level === "대학생" || w.level === "최상위");
+    }
+    return [...words];
+  }
+
+  function openExamLevelModal() {
+    const pools = {
+      middle: getWordsForExamLevel("middle"),
+      high: getWordsForExamLevel("high"),
+      college: getWordsForExamLevel("college"),
+      random: getWordsForExamLevel("random"),
+    };
+
+    $("#exam-level-count-middle").textContent = `등록 단어 ${pools.middle.length}개`;
+    $("#exam-level-count-high").textContent = `등록 단어 ${pools.high.length}개`;
+    $("#exam-level-count-college").textContent = `등록 단어 ${pools.college.length}개`;
+    $("#exam-level-count-random").textContent = `등록 단어 ${pools.random.length}개`;
+
+    $("#exam-level-modal").classList.remove("hidden");
+  }
+
+  function closeExamLevelModal() {
+    const modal = $("#exam-level-modal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  function beginExamWithLevel(examLevel) {
+    const pool = getWordsForExamLevel(examLevel);
+    const labels = {
+      middle: "중학생 수준",
+      high: "고등학생 수준",
+      college: "대학생 이상",
+      random: "랜덤 수준",
+    };
+    const label = labels[examLevel] || "선택한 수준";
+
+    if (pool.length < EXAM_SIZE) {
+      alert(
+        `${label}으로 출제할 단어가 부족합니다.\n필요: ${EXAM_SIZE}개, 현재: ${pool.length}개`
+      );
+      return;
+    }
+
+    closeExamLevelModal();
+    examQueue = shuffle(pool).slice(0, EXAM_SIZE);
     examIndex = 0;
     examAnswers = [];
     showScreen("screen-exam");
@@ -1462,6 +1518,8 @@
       else if (action === "close-admin-login") closeAdminLoginModal();
       else if (action === "import-words-file") openWordFilePicker();
       else if (action === "close-import-result") closeImportResultModal();
+      else if (action === "close-exam-level") closeExamLevelModal();
+      else if (action === "select-exam-level") beginExamWithLevel(actionEl.dataset.examLevel);
       else if (action === "word-page") setWordPage(actionEl.dataset.page);
       else if (action === "word-page-prev") setWordPage(wordPage - 1);
       else if (action === "word-page-next") setWordPage(wordPage + 1);

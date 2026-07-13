@@ -354,6 +354,40 @@
         <button type="button" class="btn btn-primary btn-modal-close" data-action="close-import-result">확인</button>
       </div>
     </div>
+
+    <!-- 출제 수준 선택 모달 -->
+    <div id="exam-level-modal" class="modal hidden">
+      <div class="modal-backdrop" data-action="close-exam-level"></div>
+      <div class="modal-panel modal-panel-sm">
+        <div class="modal-header">
+          <h3>출제 수준 선택</h3>
+          <button type="button" class="modal-close" data-action="close-exam-level" aria-label="닫기">×</button>
+        </div>
+        <p class="exam-level-hint">시험에 출제할 단어 수준을 선택해 주세요.</p>
+        <div class="exam-level-options">
+          <button type="button" class="btn exam-level-btn" data-action="select-exam-level" data-exam-level="middle">
+            <span class="exam-level-name">중학생 수준</span>
+            <span class="exam-level-desc">중학생 레벨만 출제</span>
+            <span class="exam-level-count" id="exam-level-count-middle"></span>
+          </button>
+          <button type="button" class="btn exam-level-btn" data-action="select-exam-level" data-exam-level="high">
+            <span class="exam-level-name">고등학생 수준</span>
+            <span class="exam-level-desc">고등학생 레벨만 출제</span>
+            <span class="exam-level-count" id="exam-level-count-high"></span>
+          </button>
+          <button type="button" class="btn exam-level-btn" data-action="select-exam-level" data-exam-level="college">
+            <span class="exam-level-name">대학생 이상</span>
+            <span class="exam-level-desc">대학생 · 최상위 레벨만 출제</span>
+            <span class="exam-level-count" id="exam-level-count-college"></span>
+          </button>
+          <button type="button" class="btn exam-level-btn" data-action="select-exam-level" data-exam-level="random">
+            <span class="exam-level-name">랜덤 수준</span>
+            <span class="exam-level-desc">모든 레벨을 섞어서 출제</span>
+            <span class="exam-level-count" id="exam-level-count-random"></span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
