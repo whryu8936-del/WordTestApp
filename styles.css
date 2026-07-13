@@ -43,6 +43,114 @@ body {
   padding: 2rem 1.25rem 3rem;
 }
 
+.app.admin-mode {
+  max-width: 920px;
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.session-user {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.session-logout {
+  background: rgba(255, 255, 255, 0.16);
+  color: #f0f7f8;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.session-logout:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.login-card,
+.admin-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem 1.35rem;
+  margin-bottom: 1.25rem;
+}
+
+.login-title {
+  font-size: 1.25rem;
+  margin-bottom: 1.15rem;
+  text-align: center;
+}
+
+.login-form,
+.admin-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.login-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.btn-admin-entry {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.admin-card-title {
+  font-size: 1.05rem;
+  margin-bottom: 1rem;
+}
+
+.form-error {
+  color: var(--wrong);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.form-msg {
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.form-msg.success {
+  color: var(--correct);
+}
+
+.form-msg.error {
+  color: var(--wrong);
+}
+
+.btn-add-user,
+.btn-admin-logout {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.btn-admin-logout {
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+#users-table {
+  min-width: 640px;
+}
+
+#users-table th:last-child,
+#users-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
 .app-header {
   text-align: center;
   margin-bottom: 2.5rem;
@@ -611,9 +719,135 @@ tbody tr:hover {
 .sort-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.85rem;
+  width: 100%;
+}
+
+.sort-bar-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.btn-import-file {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.2);
+  color: #f0f7f8;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.btn-import-file:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.pagination {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.pagination-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.pagination-status-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+  margin-right: 0.15rem;
+}
+
+.pagination-status-current,
+.pagination-status-total {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.pagination-status-sep {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  margin: 0 0.1rem;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pagination-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.pagination-ellipsis {
+  color: var(--ink-muted);
+  padding: 0 0.15rem;
+  font-weight: 600;
+}
+
+.pagination-nav,
+.pagination-page {
+  background: #e8f0f2;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  min-width: 2.4rem;
+  font-weight: 600;
+}
+
+.pagination-nav:hover:not(:disabled),
+.pagination-page:hover {
+  background: #d5e4e8;
+}
+
+.pagination-page.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.pagination-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.modal-panel-sm {
+  max-width: 400px;
+}
+
+.import-result-message {
+  text-align: center;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+  color: var(--ink);
 }
 
 .sort-label {

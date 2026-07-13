@@ -1,9 +1,27 @@
 (() => {
   "use strict";
 
-  const STORAGE_WORDS = "wordmemo_words";
-  const STORAGE_RECORDS = "wordmemo_records";
+  const firebaseConfig = {
+    apiKey: "AIzaSyCfDNiN8ecPvl8PdqoV2UkGWJ_YleB-NBo",
+    authDomain: "englishwordtest-4a6d1.firebaseapp.com",
+    databaseURL: "https://englishwordtest-4a6d1-default-rtdb.firebaseio.com",
+    projectId: "englishwordtest-4a6d1",
+    storageBucket: "englishwordtest-4a6d1.firebasestorage.app",
+    messagingSenderId: "989075866396",
+    appId: "1:989075866396:web:231c8135c642104f26f0d9",
+    measurementId: "G-TRWK9F4Z6J",
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const WORDS_PATH = "eng_word_list";
+  const EXAMS_PATH = "english_exam_list";
+  const ACCOUNT_PATH = "account";
+  const ADMIN_NAME = "administrator";
+  const DEFAULT_ADMIN_PASSWORD = "super1234!@#$";
+
   const EXAM_SIZE = 10;
+  const WORDS_PER_PAGE = 10;
   const LEVELS = ["중학생", "고등학생", "대학생", "최상위"];
 
   const DEFAULT_WORDS = [
@@ -21,19 +39,31 @@
     { id: "12", word: "maintain", meanings: ["유지하다", "보수하다"], level: "고등학생" },
   ];
 
-  let words = loadWords();
-  let records = loadRecords();
+  let words = [];
+  let records = [];
+  let users = [];
+  let adminPassword = DEFAULT_ADMIN_PASSWORD;
+  let currentUser = null;
+  let isAdminSession = false;
   let examQueue = [];
   let examIndex = 0;
   let examAnswers = [];
   let editingWordId = null;
+  let editingUserId = null;
   let wordSortMode = "registered";
+  let wordPage = 1;
   let examStartedAt = 0;
   let examElapsedMs = 0;
   let examTimerId = null;
+  let firebaseReady = false;
+  let accountReady = false;
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
 
   function normalizeWord(entry, index = 0, total = 1) {
     const fromBank = findInBank(entry.word);
@@ -43,55 +73,533 @@
       meanings: Array.isArray(entry.meanings) ? entry.meanings.slice(0, 2) : [],
       level: LEVELS.includes(entry.level) ? entry.level : fromBank?.level || "중학생",
       createdAt: entry.createdAt || Date.now() - (total - index) * 1000,
+      answerRate: entry.answerRate ?? null,
     };
   }
 
-  function loadWords() {
-    try {
-      const raw = localStorage.getItem(STORAGE_WORDS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalized = parsed.map((w, i, arr) => normalizeWord(w, i, arr.length));
-          const needsSave = parsed.some((w) => !w.createdAt);
-          if (needsSave) {
-            localStorage.setItem(STORAGE_WORDS, JSON.stringify(normalized));
-          }
-          return normalized;
-        }
-      }
-    } catch (_) {
-      /* ignore */
-    }
-    const defaults = structuredClone(DEFAULT_WORDS).map((w, i, arr) =>
+  function defaultWords() {
+    return structuredClone(DEFAULT_WORDS).map((w, i, arr) =>
       normalizeWord(w, i, arr.length)
     );
-    return defaults;
   }
 
-  function saveWords() {
-    localStorage.setItem(STORAGE_WORDS, JSON.stringify(words));
+  function wordToFirebase(entry, answerRate) {
+    return {
+      english_word: entry.word,
+      korean_mean_1: entry.meanings[0] || "",
+      korean_mean_2: entry.meanings[1] || "",
+      date: new Date(entry.createdAt || Date.now()).toISOString(),
+      level: entry.level || "중학생",
+      answer_rate: answerRate === null || answerRate === undefined ? null : answerRate,
+    };
   }
 
-  function loadRecords() {
-    try {
-      const raw = localStorage.getItem(STORAGE_RECORDS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (_) {
-      /* ignore */
+  function wordFromFirebase(id, data, index = 0, total = 1) {
+    const mean1 = data.korean_mean_1 || "";
+    const mean2 = data.korean_mean_2 || data.korean_meam_2 || "";
+    const meanings = mean2 ? [mean1, mean2] : mean1 ? [mean1] : [];
+    const createdAt = data.date ? Date.parse(data.date) || Date.now() : Date.now() - (total - index) * 1000;
+    return normalizeWord(
+      {
+        id,
+        word: data.english_word || "",
+        meanings,
+        level: data.level,
+        createdAt,
+        answerRate: data.answer_rate ?? null,
+      },
+      index,
+      total
+    );
+  }
+
+  function examToFirebase(record) {
+    return {
+      date: record.date,
+      duration: record.elapsedMs,
+      test_result: (record.answers || []).map((a, i) => ({
+        word_no: i + 1,
+        english_word: a.word,
+        korean_mean_1: a.meanings?.[0] || "",
+        korean_mean_2: a.meanings?.[1] || "",
+        level: a.level || "중학생",
+        correct: !!a.correct,
+      })),
+    };
+  }
+
+  function examFromFirebase(id, data) {
+    const answers = Array.isArray(data.test_result)
+      ? data.test_result
+      : Object.values(data.test_result || {});
+    answers.sort((a, b) => (a.word_no || 0) - (b.word_no || 0));
+
+    const mapped = answers.map((a) => {
+      const mean1 = a.korean_mean_1 || "";
+      const mean2 = a.korean_mean_2 || "";
+      return {
+        word: a.english_word || "",
+        meanings: mean2 ? [mean1, mean2] : mean1 ? [mean1] : [],
+        level: a.level || "중학생",
+        correct: !!a.correct,
+      };
+    });
+
+    const correctCount = mapped.filter((a) => a.correct).length;
+    return {
+      id,
+      date: data.date || new Date().toISOString(),
+      correctCount,
+      wrongCount: mapped.length - correctCount,
+      elapsedMs: typeof data.duration === "number" ? data.duration : 0,
+      answers: mapped,
+    };
+  }
+
+  async function saveWords() {
+    const accuracyMap = getWordAccuracyMap();
+    const payload = {};
+    words.forEach((w) => {
+      const rate = getAccuracyRate(w.word, accuracyMap);
+      const answerRate =
+        rate === null ? (w.answerRate ?? null) : Math.round(rate * 100);
+      w.answerRate = answerRate;
+      payload[w.id] = wordToFirebase(w, answerRate);
+    });
+    await db.ref(WORDS_PATH).set(payload);
+  }
+
+  async function saveExamRecord(record) {
+    await db.ref(`${EXAMS_PATH}/${record.id}`).set(examToFirebase(record));
+  }
+
+  async function loadFromFirebase() {
+    const [wordsSnap, examsSnap] = await Promise.all([
+      db.ref(WORDS_PATH).once("value"),
+      db.ref(EXAMS_PATH).once("value"),
+    ]);
+
+    const examsVal = examsSnap.val();
+    if (examsVal && typeof examsVal === "object") {
+      records = Object.entries(examsVal)
+        .map(([id, data]) => examFromFirebase(id, data))
+        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    } else {
+      records = [];
     }
-    return [];
+
+    const wordsVal = wordsSnap.val();
+    if (wordsVal && typeof wordsVal === "object") {
+      const entries = Object.entries(wordsVal);
+      words = entries.map(([id, data], i) => wordFromFirebase(id, data, i, entries.length));
+    } else {
+      words = defaultWords();
+      await saveWords();
+    }
   }
 
-  function saveRecords() {
-    localStorage.setItem(STORAGE_RECORDS, JSON.stringify(records));
+  /* ---------- 계정 / 로그인 ---------- */
+
+  function userFromFirebase(id, data) {
+    return {
+      id,
+      name: String(data.name || "").trim(),
+      password: String(data.password || ""),
+      createdAt: data.created_at || data.createdAt || new Date().toISOString(),
+      loginCount: Number(data.login_count ?? data.loginCount ?? 0) || 0,
+    };
   }
 
-  function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  function userToFirebase(user) {
+    return {
+      name: user.name,
+      password: user.password,
+      created_at: user.createdAt,
+      login_count: user.loginCount,
+    };
+  }
+
+  async function loadAccounts() {
+    const snap = await db.ref(ACCOUNT_PATH).once("value");
+    const val = snap.val();
+
+    if (!val || !val.admin || !val.admin.password) {
+      adminPassword = DEFAULT_ADMIN_PASSWORD;
+      await db.ref(`${ACCOUNT_PATH}/admin`).set({ password: adminPassword });
+    } else {
+      adminPassword = String(val.admin.password);
+    }
+
+    const usersVal = val?.users;
+    if (usersVal && typeof usersVal === "object") {
+      users = Object.entries(usersVal)
+        .map(([id, data]) => userFromFirebase(id, data))
+        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    } else {
+      users = [];
+    }
+    accountReady = true;
+  }
+
+  async function saveUsers() {
+    const payload = {};
+    users.forEach((u) => {
+      payload[u.id] = userToFirebase(u);
+    });
+    await db.ref(`${ACCOUNT_PATH}/users`).set(Object.keys(payload).length ? payload : null);
+  }
+
+  async function saveAdminPassword(nextPassword) {
+    adminPassword = nextPassword;
+    await db.ref(`${ACCOUNT_PATH}/admin/password`).set(nextPassword);
+  }
+
+  function showLoginError(message) {
+    const el = $("#login-error");
+    if (!message) {
+      el.classList.add("hidden");
+      el.textContent = "";
+      return;
+    }
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  function setSessionBar(visible, label = "") {
+    const bar = $("#session-bar");
+    if (!visible) {
+      bar.classList.add("hidden");
+      return;
+    }
+    $("#session-user").textContent = label;
+    bar.classList.remove("hidden");
+  }
+
+  function showLoginScreen() {
+    currentUser = null;
+    isAdminSession = false;
+    document.querySelector(".app").classList.remove("admin-mode");
+    setSessionBar(false);
+    closeUserModal();
+    closeAdminLoginModal();
+    closeImportResultModal();
+    closeAddWordModal();
+    closeModal();
+    $("#login-form").reset();
+    showLoginError("");
+    showScreen("screen-login");
+    $("#login-username").focus();
+  }
+
+  function enterAppAsUser(user) {
+    currentUser = user;
+    isAdminSession = false;
+    document.querySelector(".app").classList.remove("admin-mode");
+    setSessionBar(true, `${user.name} 님`);
+    renderHomeStats();
+    showScreen("screen-home");
+  }
+
+  function enterAdmin() {
+    currentUser = null;
+    isAdminSession = true;
+    document.querySelector(".app").classList.add("admin-mode");
+    setSessionBar(true, "관리자");
+    $("#admin-password-form").reset();
+    const msg = $("#admin-password-msg");
+    msg.classList.add("hidden");
+    msg.textContent = "";
+    closeUserModal();
+    closeAdminLoginModal();
+    renderUsersTable();
+    showScreen("screen-admin");
+  }
+
+  function openAdminLoginModal() {
+    showLoginError("");
+    $("#admin-login-form").reset();
+    $("#admin-login-username").value = ADMIN_NAME;
+    showAdminLoginError("");
+    $("#admin-login-modal").classList.remove("hidden");
+    $("#admin-login-password").focus();
+  }
+
+  function closeAdminLoginModal() {
+    const modal = $("#admin-login-modal");
+    if (modal) modal.classList.add("hidden");
+    const form = $("#admin-login-form");
+    if (form) form.reset();
+    showAdminLoginError("");
+  }
+
+  function showAdminLoginError(message) {
+    const el = $("#admin-login-error");
+    if (!el) return;
+    if (!message) {
+      el.classList.add("hidden");
+      el.textContent = "";
+      return;
+    }
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  async function handleAdminLogin(e) {
+    e.preventDefault();
+    if (!accountReady) {
+      showAdminLoginError("계정 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+
+    const username = $("#admin-login-username").value.trim();
+    const password = $("#admin-login-password").value;
+
+    if (username !== ADMIN_NAME) {
+      showAdminLoginError("사용자 관리는 administrator 계정만 접근할 수 있습니다.");
+      return;
+    }
+
+    if (password !== adminPassword) {
+      showAdminLoginError("패스워드가 올바르지 않습니다.");
+      return;
+    }
+
+    showAdminLoginError("");
+    enterAdmin();
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    if (!accountReady) {
+      showLoginError("계정 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+
+    const username = $("#login-username").value.trim();
+    const password = $("#login-password").value;
+
+    if (!username || !password) {
+      showLoginError("사용자 이름과 패스워드를 입력해 주세요.");
+      return;
+    }
+
+    if (username === ADMIN_NAME) {
+      showLoginError("관리자 계정은 '사용자 관리' 버튼으로 접속해 주세요.");
+      return;
+    }
+
+    const user = users.find((u) => u.name === username);
+    if (!user || user.password !== password) {
+      showLoginError("사용자 이름 또는 패스워드가 올바르지 않습니다.");
+      return;
+    }
+
+    user.loginCount += 1;
+    try {
+      await db.ref(`${ACCOUNT_PATH}/users/${user.id}/login_count`).set(user.loginCount);
+    } catch (err) {
+      console.error(err);
+      user.loginCount -= 1;
+      showLoginError("접속 기록을 저장하지 못했습니다. 다시 시도해 주세요.");
+      return;
+    }
+
+    showLoginError("");
+
+    if (!firebaseReady) {
+      try {
+        await loadFromFirebase();
+        firebaseReady = true;
+      } catch (err) {
+        console.error(err);
+        words = defaultWords();
+        records = [];
+        firebaseReady = true;
+        alert(
+          "Firebase 단어/시험 데이터 연결에 실패했습니다. 일시적으로 기본 단어로 동작합니다."
+        );
+      }
+    }
+
+    enterAppAsUser(user);
+  }
+
+  function logout() {
+    stopExamTimer();
+    showLoginScreen();
+  }
+
+  function adminLogout() {
+    showLoginScreen();
+  }
+
+  async function handleAdminPasswordChange(e) {
+    e.preventDefault();
+    const next = $("#admin-new-password").value;
+    const confirm = $("#admin-confirm-password").value;
+    const msg = $("#admin-password-msg");
+
+    if (!next) {
+      msg.textContent = "새 패스워드를 입력해 주세요.";
+      msg.className = "form-msg error";
+      return;
+    }
+    if (next !== confirm) {
+      msg.textContent = "새 패스워드와 확인 값이 일치하지 않습니다.";
+      msg.className = "form-msg error";
+      return;
+    }
+
+    try {
+      await saveAdminPassword(next);
+      $("#admin-password-form").reset();
+      msg.textContent = "관리자 패스워드가 변경되었습니다.";
+      msg.className = "form-msg success";
+    } catch (err) {
+      console.error(err);
+      msg.textContent = "패스워드 저장에 실패했습니다.";
+      msg.className = "form-msg error";
+    }
+  }
+
+  function renderUsersTable() {
+    const tbody = $("#users-table tbody");
+    tbody.innerHTML = "";
+    const empty = $("#users-empty");
+    $("#user-count").textContent = `등록된 사용자: ${users.length}명`;
+
+    if (users.length === 0) {
+      empty.classList.remove("hidden");
+      return;
+    }
+    empty.classList.add("hidden");
+
+    users.forEach((u, index) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${escapeHtml(u.name)}</td>
+        <td>${escapeHtml(u.password)}</td>
+        <td>${escapeHtml(formatDate(u.createdAt))}</td>
+        <td>${u.loginCount}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-sm btn-ghost" data-user-edit="${escapeHtml(u.id)}">편집</button>
+          <button type="button" class="btn btn-sm btn-danger" data-user-delete="${escapeHtml(u.id)}">삭제</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function openAddUserModal() {
+    editingUserId = null;
+    $("#user-modal-title").textContent = "신규 사용자 추가";
+    $("#user-form-submit").textContent = "저장";
+    $("#user-form").reset();
+    $("#user-form-error").classList.add("hidden");
+    $("#user-form-error").textContent = "";
+    $("#user-modal").classList.remove("hidden");
+    $("#input-user-name").focus();
+  }
+
+  function openEditUserModal(id) {
+    const user = users.find((u) => u.id === id);
+    if (!user) return;
+    editingUserId = id;
+    $("#user-modal-title").textContent = "사용자 편집";
+    $("#user-form-submit").textContent = "저장";
+    $("#input-user-name").value = user.name;
+    $("#input-user-password").value = user.password;
+    $("#user-form-error").classList.add("hidden");
+    $("#user-form-error").textContent = "";
+    $("#user-modal").classList.remove("hidden");
+    $("#input-user-name").focus();
+  }
+
+  function closeUserModal() {
+    $("#user-modal").classList.add("hidden");
+    editingUserId = null;
+    $("#user-form").reset();
+    $("#user-form-error").classList.add("hidden");
+    $("#user-form-error").textContent = "";
+  }
+
+  function showUserFormError(message) {
+    const el = $("#user-form-error");
+    if (!message) {
+      el.classList.add("hidden");
+      el.textContent = "";
+      return;
+    }
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  async function saveUser(e) {
+    e.preventDefault();
+    const name = $("#input-user-name").value.trim();
+    const password = $("#input-user-password").value;
+
+    if (!name || !password) {
+      showUserFormError("이름과 패스워드를 입력해 주세요.");
+      return;
+    }
+
+    if (name.toLowerCase() === ADMIN_NAME.toLowerCase()) {
+      showUserFormError("administrator는 일반 사용자로 등록할 수 없습니다.");
+      return;
+    }
+
+    const duplicated = users.some(
+      (u) => u.name.toLowerCase() === name.toLowerCase() && u.id !== editingUserId
+    );
+    if (duplicated) {
+      showUserFormError("이미 등록된 사용자 이름입니다.");
+      return;
+    }
+
+    if (editingUserId) {
+      const index = users.findIndex((u) => u.id === editingUserId);
+      if (index === -1) {
+        showUserFormError("편집할 사용자를 찾을 수 없습니다.");
+        return;
+      }
+      users[index] = { ...users[index], name, password };
+    } else {
+      users.push({
+        id: uid(),
+        name,
+        password,
+        createdAt: new Date().toISOString(),
+        loginCount: 0,
+      });
+    }
+
+    try {
+      await saveUsers();
+    } catch (err) {
+      console.error(err);
+      showUserFormError("사용자 정보를 Firebase에 저장하지 못했습니다.");
+      await loadAccounts();
+      return;
+    }
+
+    closeUserModal();
+    renderUsersTable();
+  }
+
+  async function deleteUser(id) {
+    if (!confirm("이 사용자를 삭제할까요?")) return;
+    users = users.filter((u) => u.id !== id);
+    try {
+      await saveUsers();
+    } catch (err) {
+      console.error(err);
+      alert("사용자를 Firebase에서 삭제하지 못했습니다.");
+      await loadAccounts();
+      return;
+    }
+    renderUsersTable();
   }
 
   function showScreen(id) {
@@ -234,7 +742,16 @@
     showScreen("screen-home");
   }
 
+  function ensureFirebaseReady() {
+    if (!firebaseReady) {
+      alert("Firebase 데이터를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+      return false;
+    }
+    return true;
+  }
+
   function startExam() {
+    if (!ensureFirebaseReady()) return;
     if (words.length < EXAM_SIZE) {
       alert(
         `시험에는 최소 ${EXAM_SIZE}개의 단어가 필요합니다.\n현재 ${words.length}개입니다. 단어 관리에서 단어를 추가해 주세요.`
@@ -300,7 +817,7 @@
     }
   }
 
-  function finishExam() {
+  async function finishExam() {
     stopExamTimer();
     const correctCount = examAnswers.filter((a) => a.correct).length;
     const wrongCount = EXAM_SIZE - correctCount;
@@ -315,7 +832,14 @@
       answers: examAnswers,
     };
     records.unshift(record);
-    saveRecords();
+
+    try {
+      await saveExamRecord(record);
+      await saveWords();
+    } catch (err) {
+      console.error(err);
+      alert("시험 기록을 Firebase에 저장하지 못했습니다.");
+    }
 
     $("#result-summary").innerHTML = `
       <span>총 ${EXAM_SIZE}문제 중 ${correctCount}개 맞음, ${wrongCount}개 틀림</span>
@@ -330,7 +854,7 @@
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td>${escapeHtml(a.word)}</td>
-        <td>${escapeHtml(formatMeanings(a.meanings))}</td>
+        <td class="meanings-cell">${formatMeaningsMultiline(a.meanings)}</td>
         <td><span class="badge ${levelBadgeClass(level)}">${escapeHtml(level)}</span></td>
         <td><span class="badge ${a.correct ? "badge-correct" : "badge-wrong"}">${
           a.correct ? "맞음" : "틀림"
@@ -345,7 +869,9 @@
   /* ---------- 단어 관리 ---------- */
 
   function openWordManage() {
+    if (!ensureFirebaseReady()) return;
     closeAddWordModal();
+    wordPage = 1;
     renderWordsTable();
     showScreen("screen-words");
   }
@@ -519,8 +1045,67 @@
   function setWordSortMode(mode) {
     if (mode !== "registered" && mode !== "wrong" && mode !== "alpha") return;
     wordSortMode = mode;
+    wordPage = 1;
     updateSortButtons();
     renderWordsTable();
+  }
+
+  function getWordTotalPages() {
+    return Math.max(1, Math.ceil(words.length / WORDS_PER_PAGE));
+  }
+
+  function setWordPage(page) {
+    const totalPages = getWordTotalPages();
+    wordPage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+    renderWordsTable();
+  }
+
+  function renderWordsPagination(totalPages) {
+    const nav = $("#words-pagination");
+    if (!nav) return;
+
+    if (words.length === 0) {
+      nav.classList.add("hidden");
+      nav.innerHTML = "";
+      return;
+    }
+
+    nav.classList.remove("hidden");
+    const prevDisabled = wordPage <= 1 ? "disabled" : "";
+    const nextDisabled = wordPage >= totalPages ? "disabled" : "";
+
+    const windowSize = 5;
+    let start = Math.max(1, wordPage - Math.floor(windowSize / 2));
+    let end = Math.min(totalPages, start + windowSize - 1);
+    start = Math.max(1, end - windowSize + 1);
+
+    let pageButtons = "";
+    if (start > 1) {
+      pageButtons += `<button type="button" class="btn btn-sm pagination-page" data-action="word-page" data-page="1">1</button>`;
+      if (start > 2) pageButtons += `<span class="pagination-ellipsis">…</span>`;
+    }
+    for (let p = start; p <= end; p += 1) {
+      const active = p === wordPage ? "active" : "";
+      pageButtons += `<button type="button" class="btn btn-sm pagination-page ${active}" data-action="word-page" data-page="${p}">${p}</button>`;
+    }
+    if (end < totalPages) {
+      if (end < totalPages - 1) pageButtons += `<span class="pagination-ellipsis">…</span>`;
+      pageButtons += `<button type="button" class="btn btn-sm pagination-page" data-action="word-page" data-page="${totalPages}">${totalPages}</button>`;
+    }
+
+    nav.innerHTML = `
+      <div class="pagination-status">
+        <span class="pagination-status-label">페이지</span>
+        <strong class="pagination-status-current">${wordPage}</strong>
+        <span class="pagination-status-sep">/</span>
+        <strong class="pagination-status-total">${totalPages}</strong>
+      </div>
+      <div class="pagination-controls">
+        <button type="button" class="btn btn-sm pagination-nav" data-action="word-page-prev" ${prevDisabled}>이전</button>
+        <div class="pagination-pages">${pageButtons}</div>
+        <button type="button" class="btn btn-sm pagination-nav" data-action="word-page-next" ${nextDisabled}>다음</button>
+      </div>
+    `;
   }
 
   function renderWordsTable() {
@@ -530,22 +1115,34 @@
     tbody.innerHTML = "";
     const accuracyMap = getWordAccuracyMap();
 
+    const totalPages = getWordTotalPages();
+    if (wordPage > totalPages) wordPage = totalPages;
+    if (wordPage < 1) wordPage = 1;
+
     if (words.length === 0) {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td colspan="5" style="text-align:center;color:#5a6f7a;">등록된 단어가 없습니다.</td>`;
       tbody.appendChild(tr);
+      renderWordsPagination(totalPages);
       return;
     }
 
-    getSortedWords(accuracyMap).forEach((w) => {
+    const sorted = getSortedWords(accuracyMap);
+    const start = (wordPage - 1) * WORDS_PER_PAGE;
+    const pageItems = sorted.slice(start, start + WORDS_PER_PAGE);
+
+    pageItems.forEach((w) => {
       const level = w.level || "중학생";
       const stats = accuracyMap.get(w.word.toLowerCase());
-      const accuracyText =
-        !stats || stats.appeared === 0
-          ? "미출제"
-          : `${Math.round((stats.correct / stats.appeared) * 100)}%`;
-      const accuracyClass =
-        !stats || stats.appeared === 0 ? "accuracy-none" : "accuracy-rate";
+      let accuracyText = "미출제";
+      let accuracyClass = "accuracy-none";
+      if (stats && stats.appeared > 0) {
+        accuracyText = `${Math.round((stats.correct / stats.appeared) * 100)}%`;
+        accuracyClass = "accuracy-rate";
+      } else if (w.answerRate !== null && w.answerRate !== undefined) {
+        accuracyText = `${w.answerRate}%`;
+        accuracyClass = "accuracy-rate";
+      }
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -560,10 +1157,14 @@
       `;
       tbody.appendChild(tr);
     });
+
+    renderWordsPagination(totalPages);
   }
 
-  function saveWord(e) {
+  async function saveWord(e) {
     e.preventDefault();
+    if (!ensureFirebaseReady()) return;
+
     const wordInput = $("#input-word");
     const m1 = $("#input-meaning1");
     const m2 = $("#input-meaning2");
@@ -593,24 +1194,158 @@
       }
       words[index] = { ...words[index], word, meanings, level };
     } else {
-      words.unshift({ id: uid(), word, meanings, level, createdAt: Date.now() });
+      words.unshift({
+        id: uid(),
+        word,
+        meanings,
+        level,
+        createdAt: Date.now(),
+        answerRate: null,
+      });
+      wordPage = 1;
     }
 
-    saveWords();
+    try {
+      await saveWords();
+    } catch (err) {
+      console.error(err);
+      alert("단어를 Firebase에 저장하지 못했습니다.");
+      return;
+    }
+
     closeAddWordModal();
     renderWordsTable();
   }
 
-  function deleteWord(id) {
+  async function deleteWord(id) {
     if (!confirm("이 단어를 삭제할까요?")) return;
     words = words.filter((w) => w.id !== id);
-    saveWords();
+    try {
+      await saveWords();
+    } catch (err) {
+      console.error(err);
+      alert("단어를 Firebase에서 삭제하지 못했습니다.");
+      return;
+    }
     renderWordsTable();
+  }
+
+  function openWordFilePicker() {
+    if (!ensureFirebaseReady()) return;
+    const input = $("#word-file-input");
+    input.value = "";
+    input.click();
+  }
+
+  function parseAnswerRatio(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const num = Number(value);
+    if (Number.isNaN(num)) return null;
+    if (num >= 0 && num <= 1) return Math.round(num * 100);
+    return Math.max(0, Math.min(100, Math.round(num)));
+  }
+
+  function parseWordImportList(rawText) {
+    const trimmed = rawText.trim();
+    if (!trimmed) return [];
+
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (_) {
+      const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (lines.length === 0) throw new Error("empty");
+      parsed = lines.map((line) => JSON.parse(line));
+    }
+
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object") return [parsed];
+    throw new Error("invalid");
+  }
+
+  async function handleWordFileSelected(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+
+    let entries;
+    try {
+      const text = await file.text();
+      entries = parseWordImportList(text);
+    } catch (err) {
+      console.error(err);
+      alert("JSON 파일을 읽지 못했습니다. 파일 형식을 확인해 주세요.");
+      return;
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      alert("추가할 단어 데이터가 없습니다.");
+      return;
+    }
+
+    const owned = new Set(words.map((w) => w.word.toLowerCase()));
+    let addedCount = 0;
+    const now = Date.now();
+
+    entries.forEach((item, index) => {
+      if (!item || typeof item !== "object") return;
+
+      const word = String(item.word || "").trim();
+      const meaning1 = String(item.meaning1 || "").trim();
+      const meaning2 = String(item.meaning2 || "").trim();
+      const levelRaw = String(item.level || "").trim();
+      const level = LEVELS.includes(levelRaw) ? levelRaw : "중학생";
+      const answerRate = parseAnswerRatio(
+        item["answer-ratio"] ?? item["answer-rartio"] ?? item.answer_ratio ?? item.answerRate
+      );
+
+      if (!word || !meaning1) return;
+      if (owned.has(word.toLowerCase())) return;
+
+      const meanings = meaning2 ? [meaning1, meaning2] : [meaning1];
+      words.unshift({
+        id: uid(),
+        word,
+        meanings,
+        level,
+        createdAt: now - index,
+        answerRate,
+      });
+      owned.add(word.toLowerCase());
+      addedCount += 1;
+    });
+
+    if (addedCount === 0) {
+      alert("추가된 단어가 없습니다. (이미 등록된 단어이거나 형식이 올바르지 않습니다.)");
+      return;
+    }
+
+    try {
+      await saveWords();
+    } catch (err) {
+      console.error(err);
+      alert("단어를 Firebase에 저장하지 못했습니다.");
+      return;
+    }
+
+    wordPage = 1;
+    renderWordsTable();
+    showImportResultModal(addedCount);
+  }
+
+  function showImportResultModal(addedCount) {
+    $("#import-result-message").textContent = `${addedCount}개의 단어가 추가되었습니다.`;
+    $("#import-result-modal").classList.remove("hidden");
+  }
+
+  function closeImportResultModal() {
+    $("#import-result-modal").classList.add("hidden");
   }
 
   /* ---------- 시험 기록 ---------- */
 
   function openRecords() {
+    if (!ensureFirebaseReady()) return;
     renderRecordsTable();
     showScreen("screen-records");
   }
@@ -668,6 +1403,7 @@
     $("#detail-summary").innerHTML = `
       <p>${total} 문제 중 ${correctCount} 문제 정답</p>
       <p>정답율 ${rate}%</p>
+      <p>경과시간 ${formatElapsedResult(record.elapsedMs)}</p>
     `;
 
     const tbody = $("#detail-table tbody");
@@ -680,7 +1416,7 @@
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td>${escapeHtml(a.word)}</td>
-        <td>${escapeHtml(formatMeanings(a.meanings))}</td>
+        <td class="meanings-cell">${formatMeaningsMultiline(a.meanings)}</td>
         <td><span class="badge ${levelBadgeClass(level)}">${escapeHtml(level)}</span></td>
         <td><span class="badge ${a.correct ? "badge-correct" : "badge-wrong"}">${
           a.correct ? "맞음" : "틀림"
@@ -718,6 +1454,17 @@
       else if (action === "close-add-word") closeAddWordModal();
       else if (action === "close-modal") closeModal();
       else if (action === "sort-words") setWordSortMode(actionEl.dataset.sort);
+      else if (action === "logout") logout();
+      else if (action === "admin-logout") adminLogout();
+      else if (action === "open-add-user") openAddUserModal();
+      else if (action === "close-user-modal") closeUserModal();
+      else if (action === "open-admin-login") openAdminLoginModal();
+      else if (action === "close-admin-login") closeAdminLoginModal();
+      else if (action === "import-words-file") openWordFilePicker();
+      else if (action === "close-import-result") closeImportResultModal();
+      else if (action === "word-page") setWordPage(actionEl.dataset.page);
+      else if (action === "word-page-prev") setWordPage(wordPage - 1);
+      else if (action === "word-page-next") setWordPage(wordPage + 1);
     }
 
     const deleteBtn = e.target.closest("[data-delete]");
@@ -725,6 +1472,12 @@
 
     const editBtn = e.target.closest("[data-edit]");
     if (editBtn) openEditWordModal(editBtn.dataset.edit);
+
+    const userDeleteBtn = e.target.closest("[data-user-delete]");
+    if (userDeleteBtn) deleteUser(userDeleteBtn.dataset.userDelete);
+
+    const userEditBtn = e.target.closest("[data-user-edit]");
+    if (userEditBtn) openEditUserModal(userEditBtn.dataset.userEdit);
 
     const detailEl = e.target.closest("[data-detail]");
     if (detailEl) openRecordDetail(detailEl.dataset.detail);
@@ -745,9 +1498,30 @@
   $("#btn-auto-word").addEventListener("click", autoSelectWord);
   $("#btn-auto-meaning").addEventListener("click", autoFindMeaning);
   $("#input-word").addEventListener("input", updateAutoButtons);
+  $("#login-form").addEventListener("submit", handleLogin);
+  $("#admin-login-form").addEventListener("submit", handleAdminLogin);
+  $("#admin-password-form").addEventListener("submit", handleAdminPasswordChange);
+  $("#user-form").addEventListener("submit", saveUser);
+  $("#word-file-input").addEventListener("change", handleWordFileSelected);
 
-  updateAutoButtons();
-  renderHomeStats();
-  renderHomeDateTime();
-  setInterval(renderHomeDateTime, 1000);
+  async function init() {
+    updateAutoButtons();
+    renderHomeDateTime();
+    setInterval(renderHomeDateTime, 1000);
+    showLoginScreen();
+
+    try {
+      await loadAccounts();
+    } catch (err) {
+      console.error(err);
+      accountReady = true;
+      adminPassword = DEFAULT_ADMIN_PASSWORD;
+      users = [];
+      alert(
+        "Firebase 계정 정보를 불러오지 못했습니다.\nRealtime Database 규칙에서 읽기/쓰기가 허용되어 있는지 확인해 주세요."
+      );
+    }
+  }
+
+  init();
 })();

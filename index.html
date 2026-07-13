@@ -14,10 +14,82 @@
     <header class="app-header">
       <h1 class="brand">English Word Test</h1>
       <p class="tagline">영어 단어 암기 &amp; 시험</p>
+      <div id="session-bar" class="session-bar hidden">
+        <span id="session-user" class="session-user"></span>
+        <button type="button" class="btn btn-sm btn-ghost session-logout" data-action="logout">로그아웃</button>
+      </div>
     </header>
 
+    <!-- 로그인 화면 -->
+    <section id="screen-login" class="screen active">
+      <div class="login-card">
+        <h2 class="login-title">로그인</h2>
+        <form id="login-form" class="login-form">
+          <div class="form-row">
+            <label for="login-username">사용자 이름</label>
+            <input type="text" id="login-username" autocomplete="username" required />
+          </div>
+          <div class="form-row">
+            <label for="login-password">패스워드</label>
+            <input type="password" id="login-password" autocomplete="current-password" required />
+          </div>
+          <p id="login-error" class="form-error hidden"></p>
+          <button type="submit" class="btn btn-primary login-submit">로그인</button>
+        </form>
+        <button type="button" class="btn btn-secondary btn-admin-entry" data-action="open-admin-login">
+          사용자 관리
+        </button>
+      </div>
+    </section>
+
+    <!-- 사용자 관리 (관리자) -->
+    <section id="screen-admin" class="screen">
+      <div class="screen-top">
+        <button type="button" class="back-btn" data-action="admin-logout">← 로그인 화면</button>
+        <h2 class="screen-title">사용자 관리</h2>
+      </div>
+
+      <div class="admin-card">
+        <h3 class="admin-card-title">관리자 패스워드 변경</h3>
+        <form id="admin-password-form" class="admin-password-form">
+          <div class="form-row">
+            <label for="admin-new-password">새 패스워드</label>
+            <input type="password" id="admin-new-password" autocomplete="new-password" required />
+          </div>
+          <div class="form-row">
+            <label for="admin-confirm-password">새 패스워드 확인</label>
+            <input type="password" id="admin-confirm-password" autocomplete="new-password" required />
+          </div>
+          <p id="admin-password-msg" class="form-msg hidden"></p>
+          <button type="submit" class="btn btn-primary">패스워드 저장</button>
+        </form>
+      </div>
+
+      <button type="button" class="btn btn-primary btn-add-user" data-action="open-add-user">
+        신규 사용자 추가
+      </button>
+      <p id="user-count" class="word-count"></p>
+      <div class="table-wrap admin-table-wrap">
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th>번호</th>
+              <th>이름</th>
+              <th>패스워드</th>
+              <th>생성된 시간</th>
+              <th>접속횟수</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="users-empty" class="empty-msg hidden">등록된 사용자가 없습니다.</p>
+      <button type="button" class="btn btn-secondary btn-admin-logout" data-action="admin-logout">관리자 로그아웃</button>
+    </section>
+
     <!-- 메인 화면 -->
-    <section id="screen-home" class="screen active">
+    <section id="screen-home" class="screen">
       <div id="home-datetime" class="home-datetime">—</div>
       <div class="home-stats" id="home-stats">
         <div class="home-stat">
@@ -95,10 +167,14 @@
         새 단어 추가
       </button>
       <div class="sort-bar">
-        <span class="sort-label">정렬</span>
-        <button type="button" class="btn btn-sm sort-btn active" data-action="sort-words" data-sort="registered">등록순</button>
-        <button type="button" class="btn btn-sm sort-btn" data-action="sort-words" data-sort="wrong">오답순</button>
-        <button type="button" class="btn btn-sm sort-btn" data-action="sort-words" data-sort="alpha">알파벳순</button>
+        <div class="sort-bar-left">
+          <span class="sort-label">정렬</span>
+          <button type="button" class="btn btn-sm sort-btn active" data-action="sort-words" data-sort="registered">등록순</button>
+          <button type="button" class="btn btn-sm sort-btn" data-action="sort-words" data-sort="wrong">오답순</button>
+          <button type="button" class="btn btn-sm sort-btn" data-action="sort-words" data-sort="alpha">알파벳순</button>
+        </div>
+        <button type="button" class="btn btn-sm btn-import-file" data-action="import-words-file">파일로 추가</button>
+        <input type="file" id="word-file-input" class="hidden" accept=".json,application/json" />
       </div>
       <p id="word-count" class="word-count"></p>
       <div class="table-wrap">
@@ -115,6 +191,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <nav id="words-pagination" class="pagination hidden" aria-label="단어 목록 페이지"></nav>
     </section>
 
     <!-- 시험 기록 화면 -->
@@ -218,8 +295,69 @@
         <button type="button" class="btn btn-primary btn-modal-close" data-action="close-modal">닫기</button>
       </div>
     </div>
+
+    <!-- 사용자 추가/편집 모달 -->
+    <div id="user-modal" class="modal hidden">
+      <div class="modal-backdrop" data-action="close-user-modal"></div>
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h3 id="user-modal-title">신규 사용자 추가</h3>
+          <button type="button" class="modal-close" data-action="close-user-modal" aria-label="닫기">×</button>
+        </div>
+        <form id="user-form" class="word-form word-form-modal">
+          <div class="form-row">
+            <label for="input-user-name">이름</label>
+            <input type="text" id="input-user-name" required autocomplete="off" />
+          </div>
+          <div class="form-row">
+            <label for="input-user-password">패스워드</label>
+            <input type="text" id="input-user-password" required autocomplete="off" />
+          </div>
+          <p id="user-form-error" class="form-error hidden"></p>
+          <button type="submit" id="user-form-submit" class="btn btn-primary">저장</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 관리자 로그인 모달 -->
+    <div id="admin-login-modal" class="modal hidden">
+      <div class="modal-backdrop" data-action="close-admin-login"></div>
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h3>사용자 관리 로그인</h3>
+          <button type="button" class="modal-close" data-action="close-admin-login" aria-label="닫기">×</button>
+        </div>
+        <form id="admin-login-form" class="word-form word-form-modal">
+          <div class="form-row">
+            <label for="admin-login-username">사용자 이름</label>
+            <input type="text" id="admin-login-username" autocomplete="username" required />
+          </div>
+          <div class="form-row">
+            <label for="admin-login-password">패스워드</label>
+            <input type="password" id="admin-login-password" autocomplete="current-password" required />
+          </div>
+          <p id="admin-login-error" class="form-error hidden"></p>
+          <button type="submit" class="btn btn-primary">접속</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 파일 추가 결과 모달 -->
+    <div id="import-result-modal" class="modal hidden">
+      <div class="modal-backdrop" data-action="close-import-result"></div>
+      <div class="modal-panel modal-panel-sm">
+        <div class="modal-header">
+          <h3>파일로 추가 완료</h3>
+          <button type="button" class="modal-close" data-action="close-import-result" aria-label="닫기">×</button>
+        </div>
+        <p id="import-result-message" class="import-result-message"></p>
+        <button type="button" class="btn btn-primary btn-modal-close" data-action="close-import-result">확인</button>
+      </div>
+    </div>
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
   <script src="word-bank.js"></script>
   <script src="app.js"></script>
 </body>
